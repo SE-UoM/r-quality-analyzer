@@ -9,8 +9,8 @@ import shutil
 import sys
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, Sequence
+from urllib.parse import urlparse
 
 try:
     from git import Repo
@@ -24,10 +24,15 @@ from ..domain.repository_analyzer import RepositoryAnalyzer
 from .repositories import LocalRepositorySource, RepositorySource
 
 
-def is_github_url(path: str) -> bool:
-    return path.startswith(("http://github.com/", "https://github.com/", "git@github.com:")) or (
-        "github.com" in path and "/" in path and not os.path.exists(path)
-    )
+def is_git_url(path: str) -> bool:
+    if os.path.exists(path):
+        return False
+    if path.startswith("git@"):
+        return True
+    parsed = urlparse(path)
+    if parsed.scheme in {"http", "https", "ssh", "git"} and parsed.netloc:
+        return True
+    return path.endswith(".git") and "/" in path
 
 
 def is_short_repo_format(path: str) -> bool:
@@ -35,36 +40,31 @@ def is_short_repo_format(path: str) -> bool:
     return len(parts) == 2 and not path.startswith("http") and not os.path.exists(path)
 
 
-def clone_github_repo(repo: str) -> tuple[str, str]:
+def clone_remote_repo(repo: str, canonical_hint: Optional[str] = None) -> tuple[str, str]:
     if not GIT_AVAILABLE:
         raise ImportError("GitPython is required for cloning repositories. Run `pip install gitpython`.")
-    clone_url = repo
-    if not clone_url.startswith(("http://", "https://", "git@")):
-        clone_url = f"https://github.com/{clone_url}.git"
-    elif not clone_url.endswith(".git"):
-        clone_url = f"{clone_url}.git"
-    canonical_repo = canonical_repo_url(repo)
     temp_dir = tempfile.mkdtemp(prefix="r_quality_analyzer_")
-    Repo.clone_from(clone_url, temp_dir)
+    Repo.clone_from(repo, temp_dir)
+    canonical_repo = canonical_hint or canonical_repo_identifier(repo)
     return temp_dir, canonical_repo
 
 
-def canonical_repo_url(repo: str) -> str:
-    if repo.startswith("git@github.com:"):
-        path = repo[len("git@github.com:") :]
-        if path.endswith(".git"):
-            path = path[:-4]
-        return f"https://github.com/{path}"
-    if repo.startswith(("http://", "https://")):
-        url = repo[:-4] if repo.endswith(".git") else repo
-        return url.rstrip("/")
-    sanitized = repo[:-4] if repo.endswith(".git") else repo
-    return f"https://github.com/{sanitized}".rstrip("/")
+def canonical_repo_identifier(repo: str) -> str:
+    sanitized = repo.strip()
+    if sanitized.endswith(".git"):
+        sanitized = sanitized[:-4]
+    return sanitized.rstrip("/")
 
 
-def repo_display_name(repo_url: str) -> str:
-    trimmed = repo_url.rstrip("/")
-    return trimmed.split("/")[-1] if trimmed else trimmed
+def repo_display_name(repo_identifier: str) -> str:
+    trimmed = repo_identifier.rstrip("/")
+    if ":" in trimmed and "/" not in trimmed.split(":")[-1]:
+        tail = trimmed.split(":")[-1]
+    else:
+        tail = trimmed.split("/")[-1] if "/" in trimmed else trimmed
+    if tail.endswith(".git"):
+        tail = tail[:-4]
+    return tail or trimmed
 
 
 @dataclass
@@ -88,7 +88,7 @@ class AnalyzerCLI:
 
     def _build_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Analyze R code quality metrics.")
-        parser.add_argument("target", help="GitHub repo URL (user/repo) or local path")
+        parser.add_argument("target", help="Git repo URL (supports short GitHub form) or local path")
         parser.add_argument("-o", "--output", help="Path to write JSON output", default=None)
         parser.add_argument("-f", "--file", help="Analyze a single file", action="store_true")
         parser.add_argument("--keep-clone", help="Keep cloned repo directory", action="store_true")
@@ -127,8 +127,17 @@ class AnalyzerCLI:
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _resolve_source(self, target: str) -> RepositorySource | tuple[Optional[str], RepositorySource]:
-        if is_github_url(target) or is_short_repo_format(target):
-            temp_dir, canonical_repo = clone_github_repo(target)
+        if is_short_repo_format(target):
+            clone_url = f"https://github.com/{target}.git"
+            canonical = f"https://github.com/{target}".rstrip("/")
+            temp_dir, canonical_repo = clone_remote_repo(clone_url, canonical)
+            return temp_dir, LocalRepositorySource(
+                temp_dir,
+                repo_label=repo_display_name(canonical_repo),
+                origin=canonical_repo,
+            )
+        if is_git_url(target):
+            temp_dir, canonical_repo = clone_remote_repo(target)
             return temp_dir, LocalRepositorySource(
                 temp_dir,
                 repo_label=repo_display_name(canonical_repo),
