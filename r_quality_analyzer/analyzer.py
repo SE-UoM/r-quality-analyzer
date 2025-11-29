@@ -620,7 +620,7 @@ def analyze_repo(repo_path: str, repo_url: Optional[str] = None) -> Dict:
     
     Args:
         repo_path: Path to the repository folder
-        repo_url: Optional repository URL (e.g., GitHub URL)
+        repo_url: Optional repository URL (e.g., Git repository URL)
     
     Returns aggregated metrics in a JSON-like dict.
     """
@@ -642,20 +642,28 @@ def analyze_repo(repo_path: str, repo_url: Optional[str] = None) -> Dict:
     # Determine repo name and URL
     if repo_url:
         # Extract repo name from URL
-        if 'github.com' in repo_url:
-            # Extract from https://github.com/user/repo or https://github.com/user/repo.git
-            parts = repo_url.rstrip('/').rstrip('.git').split('/')
-            repo_name = parts[-1] if parts else os.path.basename(repo_path)
-            # Normalize URL (remove .git if present, ensure it's https://)
-            if repo_url.endswith('.git'):
-                normalized_url = repo_url[:-4]
-            else:
-                normalized_url = repo_url
-            if not normalized_url.startswith('http'):
-                normalized_url = f"https://github.com/{normalized_url}"
+        # Normalize URL (remove .git if present)
+        if repo_url.endswith('.git'):
+            normalized_url = repo_url[:-4]
         else:
-            repo_name = os.path.basename(repo_path)
             normalized_url = repo_url
+        
+        # Extract repo name from URL
+        # Handle different URL formats: https://domain.com/user/repo, git@domain.com:user/repo, etc.
+        if normalized_url.startswith('http://') or normalized_url.startswith('https://'):
+            parts = normalized_url.rstrip('/').split('/')
+            repo_name = parts[-1] if parts else os.path.basename(repo_path)
+        elif normalized_url.startswith('git@'):
+            # SSH format: git@domain.com:user/repo
+            parts = normalized_url.split(':')
+            if len(parts) > 1:
+                repo_name = parts[-1].split('/')[-1] if '/' in parts[-1] else parts[-1]
+            else:
+                repo_name = os.path.basename(repo_path)
+        else:
+            # Shorthand or other format
+            parts = normalized_url.rstrip('/').split('/')
+            repo_name = parts[-1] if parts else os.path.basename(repo_path)
     else:
         repo_name = os.path.basename(repo_path)
         normalized_url = None

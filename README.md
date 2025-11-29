@@ -1,6 +1,6 @@
 # R Quality Analyzer
 
-A Python library and CLI tool for analyzing R code quality metrics. This tool can analyze both local R projects and GitHub repositories. **Supports both functional and object-oriented R code** (S3, S4, R6, and Reference Classes).
+A Python library and CLI tool for analyzing R code quality metrics. This tool can analyze both local R projects and remote Git repositories (GitHub, GitLab, Bitbucket, etc.). **Supports both functional and object-oriented R code** (S3, S4, R6, and Reference Classes).
 
 ## Installation
 
@@ -64,12 +64,23 @@ The analyzer automatically detects and handles:
 r-quality-analyzer /path/to/r/project
 ```
 
-#### Analyze a GitHub repository:
+#### Analyze a Git repository:
 
 ```bash
+# GitHub (shorthand format)
 r-quality-analyzer user/repo
-# or
+
+# GitHub (full URL)
 r-quality-analyzer https://github.com/user/repo
+
+# GitLab
+r-quality-analyzer https://gitlab.com/user/repo
+
+# Bitbucket
+r-quality-analyzer https://bitbucket.org/user/repo
+
+# SSH format
+r-quality-analyzer git@github.com:user/repo.git
 ```
 
 #### Analyze a single file:
@@ -181,7 +192,7 @@ The tool outputs JSON with the following structure:
 ## Requirements
 
 - Python 3.7+
-- GitPython (for GitHub repository cloning)
+- GitPython (for Git repository cloning)
 
 ## License
 
