@@ -115,84 +115,54 @@ results = analyze_repo("path/to/r/project")
 print(results)
 ```
 
-## Output Format
+## Requirements
 
-The tool outputs JSON with the following structure:
+- Python 3.7+
+- GitPython (for Git repository cloning)
 
-### File-level analysis:
-
-**Functional code:**
+## Output Example
 ```json
 {
-  "file": "/path/to/file.R",
-  "loc": 150,
-  "nom": 5,
-  "cc_avg": 3.2,
-  "mpc": 8.4,
-  "cbo": 3,
-  "lcom": 2,
-  "paradigm": "functional"
-}
-```
-
-**OOP code:**
-```json
-{
-  "file": "/path/to/class.R",
-  "loc": 200,
-  "nom": 8,
-  "cc_avg": 4.1,
-  "mpc": 4.0,
-  "cbo": 5,
-  "lcom": 3,
-  "paradigm": "oop",
-  "classes": {
-    "MyClass": 4,
-    "AnotherClass": 4
-  },
-  "num_classes": 2
-}
-```
-
-### Repository-level analysis:
-
-```json
-{
-  "repo": "project-name",
-  "total_files": 10,
-  "total_loc": 1500,
-  "total_nom": 50,
-  "avg_cc": 3.2,
-  "avg_mpc": 8.4,
-  "total_cbo": 15,
-  "avg_lcom": 2.5,
-  "paradigm": "mixed",
+  "repo": "https://github.com/AMantes/Greekonomics",
+  "repo_name": "Greekonomics",
+  "local_repo": "local\\path\\r_quality_analyzer_lma0y3bn",
+  "total_files": 2,
+  "total_loc": 1889,
+  "total_nom": 30,
+  "avg_cc": 1.98,
+  "avg_mpc": 13.33,
+  "total_cbo": 4,
+  "avg_lcom": 62.0,
+  "paradigm": "functional",
   "paradigm_distribution": {
-    "functional": 6,
-    "oop": 3,
-    "mixed": 1
+    "functional": 2
   },
-  "total_classes": 5,
+  "total_classes": 0,
   "files": [
     {
-      "file": "/path/to/file1.R",
-      "loc": 150,
-      "nom": 5,
-      "cc_avg": 3.2,
-      "mpc": 8.4,
-      "cbo": 3,
-      "lcom": 2,
-      "paradigm": "functional"
+      "loc": 782,
+      "nom": 9,
+      "cc_avg": 1.78,
+      "complexities": [
+        {
+          "function": "theme_greekonomics",
+          "start_line": 32,
+          "cc": 1
+        },
+        ...
+      ],
+      "mpc": 8.56,
+      "cbo": 2,
+      "lcom": 7,
+      "paradigm": "functional",
+      "classes": {},
+      "num_classes": 0,
+      "file": "C:\\Users\\User\\AppData\\Local\\Temp\\r_quality_analyzer_lma0y3bn\\Greekonomics_51_public.R"
     },
     ...
   ]
 }
 ```
-
-## Requirements
-
-- Python 3.7+
-- GitPython (for Git repository cloning)
 
 ## License
 
