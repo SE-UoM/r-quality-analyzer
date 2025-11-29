@@ -18,6 +18,15 @@ import json
 from typing import Dict, List, Set, Optional, Tuple
 from collections import defaultdict
 
+# Import lintr analyzer (optional - will be None if import fails)
+try:
+    from .lintr_analyzer import get_lintr_summary_for_file, get_lintr_summary_for_repo
+    LINTR_AVAILABLE = True
+except ImportError:
+    LINTR_AVAILABLE = False
+    get_lintr_summary_for_file = None
+    get_lintr_summary_for_repo = None
+
 
 # ---------------------------
 # Utility Functions
@@ -611,6 +620,24 @@ def analyze_file(filepath: str) -> Optional[Dict]:
         "file": filepath,
     }
     
+    # Add lintr results if available (try to install if missing)
+    result["lintr_available"] = False
+    if LINTR_AVAILABLE and get_lintr_summary_for_file:
+        try:
+            from .lintr_analyzer import check_lintr_available
+            # Try to install lintr if not available
+            is_available, error_msg = check_lintr_available(install_if_missing=True)
+            if is_available:
+                lintr_summary = get_lintr_summary_for_file(filepath)
+                if lintr_summary:
+                    result["lintr"] = lintr_summary
+                    result["lintr_available"] = True
+            elif error_msg:
+                result["lintr_error"] = error_msg
+        except Exception as e:
+            # If lintr fails, continue without it
+            result["lintr_error"] = str(e)
+    
     return result
 
 
@@ -729,6 +756,24 @@ def analyze_repo(repo_path: str, repo_url: Optional[str] = None) -> Dict:
         "total_classes": total_classes,
         "files": results,
     }
+    
+    # Add lintr results if available (try to install if missing)
+    summary["lintr_available"] = False
+    if LINTR_AVAILABLE and get_lintr_summary_for_repo:
+        try:
+            from .lintr_analyzer import check_lintr_available
+            # Try to install lintr if not available
+            is_available, error_msg = check_lintr_available(install_if_missing=True)
+            if is_available:
+                lintr_summary = get_lintr_summary_for_repo(repo_path)
+                if lintr_summary:
+                    summary["lintr"] = lintr_summary
+                    summary["lintr_available"] = True
+            elif error_msg:
+                summary["lintr_error"] = error_msg
+        except Exception as e:
+            # If lintr fails, continue without it
+            summary["lintr_error"] = str(e)
     
     return summary
 

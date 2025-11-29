@@ -5,6 +5,7 @@ CLI interface for R Quality Analyzer
 import os
 import sys
 import json
+import subprocess
 import tempfile
 import shutil
 from pathlib import Path
@@ -17,6 +18,14 @@ except ImportError:
     GIT_AVAILABLE = False
 
 from .analyzer import analyze_repo, analyze_file
+
+# Check for lintr availability
+try:
+    from .lintr_analyzer import check_lintr_available
+    LINTR_CHECK_AVAILABLE = True
+except ImportError:
+    LINTR_CHECK_AVAILABLE = False
+    check_lintr_available = None
 
 
 def clone_repo(repo_url: str, target_dir: Optional[str] = None) -> str:
@@ -177,6 +186,54 @@ def main():
                     repo_url = f"https://github.com/{target}"
             
             output_data = analyze_repo(repo_path, repo_url=repo_url)
+        
+        # Check lintr availability and try to install if missing
+        if LINTR_CHECK_AVAILABLE and check_lintr_available:
+            # Check if lintr needs to be installed (quick check before attempting install)
+            try:
+                from .lintr_analyzer import check_r_available
+                r_available, r_error = check_r_available()
+                
+                if not r_available:
+                    if not args.output:  # Only show warning if outputting to stdout
+                        print(
+                            f"\n⚠️  R is not installed: {r_error}\n"
+                            "   Lintr analysis requires R to be installed.\n"
+                            "   Install R from: https://cran.r-project.org/\n"
+                            "   After installing R, lintr will be automatically installed on next run.\n"
+                            "   Analysis will continue without lintr results.\n",
+                            file=sys.stderr
+                        )
+                else:
+                    # R is available, check if lintr needs installation
+                    r_check_script = """
+                    if (!requireNamespace("lintr", quietly = TRUE)) {
+                        quit(status = 1, save = "no")
+                    }
+                    quit(status = 0, save = "no")
+                    """
+                    needs_install = subprocess.run(
+                        ["Rscript", "--vanilla", "-e", r_check_script],
+                        capture_output=True,
+                        timeout=5
+                    ).returncode != 0
+                    
+                    if needs_install and not args.output:
+                        print("Installing lintr R package (first time only, this may take a moment)...", file=sys.stderr)
+            except Exception:
+                pass  # Will be handled by check_lintr_available
+            
+            is_available, error_msg = check_lintr_available(install_if_missing=True)
+            if not is_available:
+                if not args.output and error_msg:  # Only show warning if outputting to stdout
+                    # Don't show error if R is not installed (already shown above)
+                    if "R is not installed" not in (error_msg or ""):
+                        print(
+                            f"\n⚠️  Lintr unavailable: {error_msg}\n"
+                            "   Lintr results will not be included in the analysis.\n"
+                            "   To install manually: Rscript -e \"install.packages('lintr', repos='https://cloud.r-project.org')\"\n",
+                            file=sys.stderr
+                        )
         
         # Output results
         json_output = json.dumps(output_data, indent=2)
