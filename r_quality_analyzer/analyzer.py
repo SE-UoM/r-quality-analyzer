@@ -522,7 +522,66 @@ def analyze_file(filepath: str) -> Optional[Dict]:
         return None
     
     loc = count_loc(filepath)
-    complexities, func_vars, nom, total_method_calls, classes_dict, paradigm = analyze_functions(source)
+    functions = extract_functions(source)
+    complexities = []
+    func_vars = []
+    total_method_calls = 0
+    
+    # Detect OOP structures
+    r6_classes = extract_r6_classes(source)
+    s4_classes = extract_s4_classes(source)
+    rc_classes = extract_reference_classes(source)
+    
+    # Group functions by class (for S3 methods)
+    classes_dict = defaultdict(list)
+    functional_functions = []
+    
+    # Build complexities array with function-level details
+    function_complexities = []
+    
+    for func_name, func_body, start_line, class_name in functions:
+        cc = calculate_cyclomatic_complexity(func_body)
+        complexities.append(cc)
+        function_complexities.append({
+            "function": func_name,
+            "start_line": start_line + 1,  # Convert to 1-based line numbers
+            "cc": cc
+        })
+        
+        local_vars = extract_local_variables(func_body)
+        func_vars.append(local_vars)
+        
+        method_calls = count_function_calls(func_body)
+        total_method_calls += method_calls
+        
+        # Group S3 methods by class
+        if class_name:
+            classes_dict[class_name].append(func_name)
+        else:
+            functional_functions.append(func_name)
+    
+    # Add R6, S4, and RC classes
+    for class_name, methods in r6_classes.items():
+        classes_dict[class_name].extend([m[0] for m in methods])
+    
+    for class_name, methods in s4_classes.items():
+        classes_dict[class_name].extend(methods)
+    
+    for class_name, methods in rc_classes.items():
+        classes_dict[class_name].extend(methods)
+    
+    # Determine paradigm
+    has_oop = len(classes_dict) > 0 or len(r6_classes) > 0 or len(s4_classes) > 0 or len(rc_classes) > 0
+    has_functional = len(functional_functions) > 0
+    
+    if has_oop and has_functional:
+        paradigm = 'mixed'
+    elif has_oop:
+        paradigm = 'oop'
+    else:
+        paradigm = 'functional'
+    
+    nom = len(functions)
     avg_cc = sum(complexities) / len(complexities) if complexities else 0
     lcom = calculate_lcom(func_vars, classes_dict)
     cbo = analyze_imports(source)
@@ -539,27 +598,29 @@ def analyze_file(filepath: str) -> Optional[Dict]:
         mpc_ratio = (total_method_calls / nom) if nom > 0 else total_method_calls
     
     result = {
-        "file": filepath,
         "loc": loc,
         "nom": nom,
         "cc_avg": round(avg_cc, 2),
+        "complexities": function_complexities,
         "mpc": round(mpc_ratio, 2),
         "cbo": cbo,
         "lcom": lcom,
         "paradigm": paradigm,
+        "classes": {name: len(methods) for name, methods in classes_dict.items()} if classes_dict else {},
+        "num_classes": len(classes_dict),
+        "file": filepath,
     }
-    
-    # Add OOP-specific information if present
-    if classes_dict:
-        result["classes"] = {name: len(methods) for name, methods in classes_dict.items()}
-        result["num_classes"] = len(classes_dict)
     
     return result
 
 
-def analyze_repo(repo_path: str) -> Dict:
+def analyze_repo(repo_path: str, repo_url: Optional[str] = None) -> Dict:
     """
     Analyze all R files in a repository folder.
+    
+    Args:
+        repo_path: Path to the repository folder
+        repo_url: Optional repository URL (e.g., GitHub URL)
     
     Returns aggregated metrics in a JSON-like dict.
     """
@@ -578,10 +639,33 @@ def analyze_repo(repo_path: str) -> Dict:
                 if metrics:
                     results.append(metrics)
     
+    # Determine repo name and URL
+    if repo_url:
+        # Extract repo name from URL
+        if 'github.com' in repo_url:
+            # Extract from https://github.com/user/repo or https://github.com/user/repo.git
+            parts = repo_url.rstrip('/').rstrip('.git').split('/')
+            repo_name = parts[-1] if parts else os.path.basename(repo_path)
+            # Normalize URL (remove .git if present, ensure it's https://)
+            if repo_url.endswith('.git'):
+                normalized_url = repo_url[:-4]
+            else:
+                normalized_url = repo_url
+            if not normalized_url.startswith('http'):
+                normalized_url = f"https://github.com/{normalized_url}"
+        else:
+            repo_name = os.path.basename(repo_path)
+            normalized_url = repo_url
+    else:
+        repo_name = os.path.basename(repo_path)
+        normalized_url = None
+    
     # Aggregate repository-level metrics
     if not results:
         return {
-            "repo": os.path.basename(repo_path),
+            "repo": normalized_url or "",
+            "repo_name": repo_name,
+            "local_repo": os.path.abspath(repo_path),
             "total_files": 0,
             "total_loc": 0,
             "total_nom": 0,
@@ -589,6 +673,9 @@ def analyze_repo(repo_path: str) -> Dict:
             "avg_mpc": 0,
             "total_cbo": 0,
             "avg_lcom": 0,
+            "paradigm": "functional",
+            "paradigm_distribution": {},
+            "total_classes": 0,
             "files": [],
         }
     
@@ -619,7 +706,9 @@ def analyze_repo(repo_path: str) -> Dict:
     total_classes = sum(r.get("num_classes", 0) for r in results)
     
     summary = {
-        "repo": os.path.basename(repo_path),
+        "repo": normalized_url or "",
+        "repo_name": repo_name,
+        "local_repo": os.path.abspath(repo_path),
         "total_files": len(results),
         "total_loc": total_loc,
         "total_nom": total_nom,
