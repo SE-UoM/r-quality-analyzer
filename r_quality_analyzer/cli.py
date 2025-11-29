@@ -148,7 +148,16 @@ def main():
                 repo_path = target
             
             # Analyze repository
-            output_data = analyze_repo(repo_path)
+            # Determine repo URL if it was a GitHub repo
+            repo_url = None
+            if is_github_url(target) or is_github_repo_format(target):
+                # Normalize the target to a proper URL
+                if not target.startswith(('http://', 'https://', 'git@')):
+                    repo_url = f"https://github.com/{target}"
+                else:
+                    repo_url = target.rstrip('.git')
+            
+            output_data = analyze_repo(repo_path, repo_url=repo_url)
         
         # Output results
         json_output = json.dumps(output_data, indent=2)
@@ -178,5 +187,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
